@@ -90,3 +90,77 @@ validate-environments:
 		echo "Validating environments using system Python"; \
 		$(PYTHON) -m packages.shared.env_schema; \
 	fi
+
+.PHONY: db-migrate db-status db-init dev run-api
+# Database migration commands
+db-init:
+	@echo "Initializing database and running migrations"
+	@if [ -f "$(VENV)/bin/python" ]; then \
+		"$(VENV)/bin/python" -c "import asyncio; from apps.database.connection import DatabaseManager; from apps.database.migrations import MigrationManager; from config.settings import get_settings; \
+		async def init(): \
+			settings = get_settings(); \
+			db = DatabaseManager(settings.database_url, settings.database_echo); \
+			await db.initialize(); \
+			mm = MigrationManager(db.engine); \
+			await mm.migrate(); \
+			status = await mm.status(); \
+			print(f'Migration status: {status}'); \
+			await db.close(); \
+		asyncio.run(init())"; \
+	else \
+		echo "Virtual environment not found. Run 'make bootstrap-python' first."; \
+		exit 1; \
+	fi
+
+db-migrate:
+	@echo "Running database migrations"
+	@if [ -f "$(VENV)/bin/python" ]; then \
+		"$(VENV)/bin/python" -c "import asyncio; from apps.database.connection import DatabaseManager; from apps.database.migrations import MigrationManager; from config.settings import get_settings; \
+		async def migrate(): \
+			settings = get_settings(); \
+			db = DatabaseManager(settings.database_url, settings.database_echo); \
+			await db.initialize(); \
+			mm = MigrationManager(db.engine); \
+			await mm.migrate(); \
+			print('Migrations completed successfully'); \
+			await db.close(); \
+		asyncio.run(migrate())"; \
+	else \
+		echo "Virtual environment not found. Run 'make bootstrap-python' first."; \
+		exit 1; \
+	fi
+
+db-status:
+	@echo "Checking database migration status"
+	@if [ -f "$(VENV)/bin/python" ]; then \
+		"$(VENV)/bin/python" -c "import asyncio; from apps.database.connection import DatabaseManager; from apps.database.migrations import MigrationManager; from config.settings import get_settings; \
+		async def status(): \
+			settings = get_settings(); \
+			db = DatabaseManager(settings.database_url, settings.database_echo); \
+			await db.initialize(); \
+			mm = MigrationManager(db.engine); \
+			status = await mm.status(); \
+			print('Migration Status:'); \
+			print(f'  Total migrations: {status[\"total_migrations\"]}'); \
+			print(f'  Applied: {status[\"applied_migrations\"]}'); \
+			print(f'  Pending: {status[\"pending_migrations\"]}'); \
+			if status['applied']: print(f'  Applied versions: {status[\"applied\"]}'); \
+			if status['pending']: print(f'  Pending versions: {status[\"pending\"]}'); \
+			await db.close(); \
+		asyncio.run(status())"; \
+	else \
+		echo "Virtual environment not found. Run 'make bootstrap-python' first."; \
+		exit 1; \
+	fi
+
+# Development server commands
+run-api:
+	@echo "Starting API server in development mode"
+	@if [ -f "$(VENV)/bin/uvicorn" ]; then \
+		cd apps/api && ../../$(VENV)/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000; \
+	else \
+		echo "uvicorn not found. Run 'make bootstrap-python' first."; \
+		exit 1; \
+	fi
+
+dev: db-migrate run-api

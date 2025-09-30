@@ -2,20 +2,35 @@
 
 import asyncio
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from .base import BaseAgent, AgentType, AgentRequest, AgentResponse, TaskStatus, TaskStep
 from ..llm_router import LLMRouter, LLMRequest
+from ..policies.command_policies import CommandPolicyEngine
+from ..policies.base import PolicyResult
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutorAgent(BaseAgent):
     """Agent responsible for executing planned steps."""
     
-    def __init__(self, config: Dict[str, Any], llm_router: LLMRouter):
+    def __init__(self, config: Dict[str, Any], llm_router: LLMRouter, policy_engine: Optional[CommandPolicyEngine] = None):
         super().__init__(AgentType.EXECUTOR, config)
         self.llm_router = llm_router
         self.system_prompt = self._build_system_prompt()
         self.tool_executors = {}  # Will be populated with actual tool executors
+        
+        # Initialize policy engine
+        if policy_engine is None:
+            policy_config = config.get("policy", {})
+            self.policy_engine = CommandPolicyEngine(policy_config)
+        else:
+            self.policy_engine = policy_engine
+        
+        self.enforce_policies = config.get("enforce_policies", True)
+        logger.info(f"ExecutorAgent initialized with policy enforcement: {self.enforce_policies}")
     
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the executor."""
@@ -98,11 +113,33 @@ For each step, provide:
             )
     
     async def _execute_step(self, step: TaskStep, request: AgentRequest) -> Dict[str, Any]:
-        """Execute a single step."""
+        """Execute a single step with policy checks."""
         try:
-            # For now, simulate execution based on tool type
-            # In a real implementation, this would call actual tool executors
+            # Check command against security policies
+            if self.enforce_policies and step.command:
+                policy_result = await self._check_command_policy(step, request)
+                
+                if policy_result["blocked"]:
+                    logger.warning(f"Command blocked by policy: {step.command}")
+                    return {
+                        "success": False,
+                        "error": policy_result["reason"],
+                        "output": None,
+                        "policy_violation": True,
+                        "violations": policy_result.get("violations", [])
+                    }
+                
+                if policy_result["requires_approval"] and not request.context.get("approved", False):
+                    logger.info(f"Command requires approval: {step.command}")
+                    return {
+                        "success": False,
+                        "error": "Command requires approval",
+                        "output": None,
+                        "requires_approval": True,
+                        "risk_level": policy_result.get("risk_level", "medium")
+                    }
             
+            # Execute based on tool type
             if step.tool == "ssh":
                 return await self._execute_ssh_step(step, request)
             elif step.tool == "kubectl":
@@ -116,11 +153,61 @@ For each step, provide:
                 return await self._execute_generic_step(step, request)
                 
         except Exception as e:
+            logger.error(f"Error executing step: {e}")
             return {
                 "success": False,
                 "error": str(e),
                 "output": None
             }
+    
+    async def _check_command_policy(self, step: TaskStep, request: AgentRequest) -> Dict[str, Any]:
+        """Check command against security policies."""
+        try:
+            # Prepare policy context
+            policy_context = {
+                "command": step.command,
+                "environment": request.environment_profile or {},
+                "user_id": request.context.get("user_id", "unknown"),
+                "tool": step.tool,
+                "description": step.description
+            }
+            
+            # Evaluate policy
+            evaluation = await self.policy_engine.evaluate(policy_context)
+            
+            # Check result
+            blocked = evaluation.result == PolicyResult.DENY
+            requires_approval = evaluation.result == PolicyResult.REQUIRE_APPROVAL
+            
+            return {
+                "blocked": blocked,
+                "requires_approval": requires_approval,
+                "reason": self._format_policy_reason(evaluation),
+                "risk_level": evaluation.risk_level,
+                "violations": [v.__dict__ for v in evaluation.violations]
+            }
+            
+        except Exception as e:
+            logger.error(f"Policy check failed: {e}")
+            # Fail safe - block on error
+            return {
+                "blocked": True,
+                "requires_approval": False,
+                "reason": f"Policy check error: {str(e)}",
+                "risk_level": "high",
+                "violations": []
+            }
+    
+    def _format_policy_reason(self, evaluation) -> str:
+        """Format policy evaluation result as human-readable reason."""
+        if not evaluation.violations:
+            return "Command allowed"
+        
+        reasons = []
+        for violation in evaluation.violations:
+            reasons.append(f"{violation.violation_type.value}: {violation.message}")
+        
+        return "; ".join(reasons)
     
     async def _execute_ssh_step(self, step: TaskStep, request: AgentRequest) -> Dict[str, Any]:
         """Execute SSH step using real SSH executor."""

@@ -10,10 +10,14 @@ from typing import Dict
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings, get_settings as load_settings
 from packages.shared.env_schema import ValidationError
 from ..orchestrator import Orchestrator
+from ..database.connection import DatabaseManager
+from ..database import repositories
+from ..cache import RedisManager, SessionManager, LLMCache, RateLimiter
 from .services.environment_service import EnvironmentProfile, EnvironmentService
 
 # Security scheme
@@ -137,3 +141,102 @@ def _environment_profile_to_dict(profile: EnvironmentProfile) -> Dict:
     data.pop("file_path", None)
     data.pop("data", None)
     return data
+
+
+def get_db_manager(request: Request) -> DatabaseManager:
+    """Get the database manager instance from the FastAPI application state."""
+    db_manager = getattr(request.app.state, "db_manager", None)
+    if not db_manager:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database not available",
+        )
+    return db_manager
+
+
+async def get_db(request: Request):
+    """Get database session for dependency injection."""
+    db_manager = get_db_manager(request)
+    async for session in db_manager.get_session():
+        yield session
+
+
+# Repository dependencies
+def get_user_repository(db: AsyncSession = Depends(get_db)) -> repositories.UserRepository:
+    """Get user repository."""
+    return repositories.UserRepository(db)
+
+
+def get_session_repository(db: AsyncSession = Depends(get_db)) -> repositories.SessionRepository:
+    """Get session repository."""
+    return repositories.SessionRepository(db)
+
+
+def get_message_repository(db: AsyncSession = Depends(get_db)) -> repositories.MessageRepository:
+    """Get message repository."""
+    return repositories.MessageRepository(db)
+
+
+def get_task_repository(db: AsyncSession = Depends(get_db)) -> repositories.TaskRepository:
+    """Get task repository."""
+    return repositories.TaskRepository(db)
+
+
+def get_task_step_repository(db: AsyncSession = Depends(get_db)) -> repositories.TaskStepRepository:
+    """Get task step repository."""
+    return repositories.TaskStepRepository(db)
+
+
+def get_audit_log_repository(db: AsyncSession = Depends(get_db)) -> repositories.AuditLogRepository:
+    """Get audit log repository."""
+    return repositories.AuditLogRepository(db)
+
+
+def get_llm_usage_repository(db: AsyncSession = Depends(get_db)) -> repositories.LLMUsageRepository:
+    """Get LLM usage repository."""
+    return repositories.LLMUsageRepository(db)
+
+
+# Redis dependencies
+def get_redis_manager(request: Request) -> RedisManager:
+    """Get the Redis manager instance from the FastAPI application state."""
+    redis_manager = getattr(request.app.state, "redis_manager", None)
+    if not redis_manager:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis not available",
+        )
+    return redis_manager
+
+
+def get_session_manager(request: Request) -> SessionManager:
+    """Get the session manager instance from the FastAPI application state."""
+    session_manager = getattr(request.app.state, "session_manager", None)
+    if not session_manager:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session manager not available",
+        )
+    return session_manager
+
+
+def get_llm_cache(request: Request) -> LLMCache:
+    """Get the LLM cache instance from the FastAPI application state."""
+    llm_cache = getattr(request.app.state, "llm_cache", None)
+    if not llm_cache:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LLM cache not available",
+        )
+    return llm_cache
+
+
+def get_rate_limiter(request: Request) -> RateLimiter:
+    """Get the rate limiter instance from the FastAPI application state."""
+    rate_limiter = getattr(request.app.state, "rate_limiter", None)
+    if not rate_limiter:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Rate limiter not available",
+        )
+    return rate_limiter

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import json
 
 from packages.shared.env_schema import (
     ValidationError,
@@ -51,23 +52,27 @@ class EnvironmentValidationResult:
 class EnvironmentService:
     """Service for managing environment profiles."""
     
-    def __init__(self, profiles_dir: Path, cache_ttl: int = 300):
+    def __init__(self, profiles_dir: Path, cache_ttl: int = 300, redis_manager=None):
         """
         Initialize environment service.
         
         Args:
             profiles_dir: Directory containing environment profile files
             cache_ttl: Cache TTL in seconds
+            redis_manager: Optional Redis manager for distributed caching
         """
         self.profiles_dir = Path(profiles_dir)
         self.cache_ttl = cache_ttl
+        self.redis_manager = redis_manager
         self._cache: Dict[str, Tuple[EnvironmentProfile, datetime]] = {}
         self._lock = asyncio.Lock()
+        self._redis_prefix = "env:profile:"
         
         # Ensure profiles directory exists
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Environment service initialized with profiles dir: {self.profiles_dir}")
+        cache_type = "Redis" if redis_manager else "in-memory"
+        logger.info(f"Environment service initialized with profiles dir: {self.profiles_dir}, cache: {cache_type}")
     
     async def list_profiles(self) -> List[EnvironmentProfile]:
         """
@@ -119,7 +124,16 @@ class EnvironmentService:
         Returns:
             Environment profile or None if not found
         """
-        # Check cache first
+        # Check Redis cache first if available
+        if self.redis_manager:
+            try:
+                cached_data = await self._get_from_redis_cache(profile_id)
+                if cached_data:
+                    return self._dict_to_profile(cached_data, None)
+            except Exception as e:
+                logger.warning(f"Redis cache error, falling back to in-memory: {e}")
+        
+        # Check in-memory cache
         if profile_id in self._cache:
             profile, timestamp = self._cache[profile_id]
             if datetime.now() - timestamp < timedelta(seconds=self.cache_ttl):
@@ -244,8 +258,7 @@ class EnvironmentService:
                 yaml.dump(profile_data, f, default_flow_style=False, sort_keys=False)
             
             # Clear cache
-            if profile_id in self._cache:
-                del self._cache[profile_id]
+            await self._invalidate_cache(profile_id)
             
             # Load and validate the created profile
             profile = self._dict_to_profile(profile_data, profile_file)
@@ -325,8 +338,7 @@ class EnvironmentService:
                 yaml.dump(profile_data, f, default_flow_style=False, sort_keys=False)
             
             # Clear cache
-            if profile_id in self._cache:
-                del self._cache[profile_id]
+            await self._invalidate_cache(profile_id)
             
             # Load and validate the updated profile
             profile = self._dict_to_profile(profile_data, profile_file)
@@ -383,8 +395,7 @@ class EnvironmentService:
             profile_file.unlink()
             
             # Clear cache
-            if profile_id in self._cache:
-                del self._cache[profile_id]
+            await self._invalidate_cache(profile_id)
             
             logger.info(f"Deleted environment profile: {profile_id}")
             return True
@@ -399,6 +410,17 @@ class EnvironmentService:
             async with self._lock:
                 # Check cache first
                 profile_id = file_path.stem
+                
+                # Check Redis cache
+                if self.redis_manager:
+                    try:
+                        cached_data = await self._get_from_redis_cache(profile_id)
+                        if cached_data:
+                            return self._dict_to_profile(cached_data, file_path)
+                    except Exception as e:
+                        logger.warning(f"Redis cache error: {e}")
+                
+                # Check in-memory cache
                 if profile_id in self._cache:
                     profile, timestamp = self._cache[profile_id]
                     if datetime.now() - timestamp < timedelta(seconds=self.cache_ttl):
@@ -408,8 +430,15 @@ class EnvironmentService:
                 profile_data = validate_environment_profile_file(file_path)
                 profile = self._dict_to_profile(profile_data, file_path)
 
-                # Cache the profile
+                # Cache the profile in memory
                 self._cache[profile_id] = (profile, datetime.now())
+                
+                # Cache in Redis if available
+                if self.redis_manager:
+                    try:
+                        await self._set_to_redis_cache(profile_id, profile_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to cache in Redis: {e}")
 
                 return profile
 
@@ -481,6 +510,11 @@ class EnvironmentService:
             if not self.profiles_dir.exists():
                 return False
             
+            # Test Redis if available
+            if self.redis_manager:
+                if not await self.redis_manager.health_check():
+                    logger.warning("Redis cache unavailable, using in-memory fallback")
+            
             # Test loading profiles
             profiles = await self.list_profiles()
             return len(profiles) >= 0  # At least should not crash
@@ -488,3 +522,40 @@ class EnvironmentService:
         except Exception as e:
             logger.error(f"Environment service health check failed: {e}")
             return False
+    
+    async def _get_from_redis_cache(self, profile_id: str) -> Optional[Dict[str, Any]]:
+        """Get profile from Redis cache."""
+        if not self.redis_manager:
+            return None
+        
+        key = f"{self._redis_prefix}{profile_id}"
+        cached = await self.redis_manager.get_json(key)
+        if cached:
+            logger.debug(f"Redis cache HIT for profile: {profile_id}")
+        return cached
+    
+    async def _set_to_redis_cache(self, profile_id: str, profile_data: Dict[str, Any]) -> bool:
+        """Set profile to Redis cache."""
+        if not self.redis_manager:
+            return False
+        
+        key = f"{self._redis_prefix}{profile_id}"
+        success = await self.redis_manager.set_json(key, profile_data, expire=self.cache_ttl)
+        if success:
+            logger.debug(f"Cached profile in Redis: {profile_id}")
+        return success
+    
+    async def _invalidate_cache(self, profile_id: str):
+        """Invalidate both in-memory and Redis cache for a profile."""
+        # Clear in-memory cache
+        if profile_id in self._cache:
+            del self._cache[profile_id]
+        
+        # Clear Redis cache
+        if self.redis_manager:
+            try:
+                key = f"{self._redis_prefix}{profile_id}"
+                await self.redis_manager.delete(key)
+                logger.debug(f"Invalidated cache for profile: {profile_id}")
+            except Exception as e:
+                logger.warning(f"Failed to invalidate Redis cache: {e}")

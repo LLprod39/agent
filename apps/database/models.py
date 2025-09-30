@@ -65,7 +65,7 @@ class User(Base):
 
     # Relationships
     sessions = relationship("Session", back_populates="user")
-    tasks = relationship("Task", back_populates="user")
+    tasks = relationship("Task", foreign_keys="Task.user_id", back_populates="user")
 
 
 class Session(Base):
@@ -99,7 +99,7 @@ class Message(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
     role = Column(Enum(MessageRole), nullable=False)
     content = Column(Text, nullable=False)
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -128,12 +128,13 @@ class Task(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    user = relationship("User", back_populates="tasks")
+    user = relationship("User", foreign_keys=[user_id], back_populates="tasks")
+    approver = relationship("User", foreign_keys=[approved_by], viewonly=True)
     session = relationship("Session", back_populates="tasks")
     steps = relationship("TaskStep", back_populates="task")
 
@@ -166,7 +167,7 @@ class TaskStep(Base):
     execution_time = Column(Float, nullable=True)
     output = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

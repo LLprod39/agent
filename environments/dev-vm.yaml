@@ -1,0 +1,25 @@
+id: dev-vm
+display_name: Development VM Fleet
+type: vm
+metadata:
+  region: eu-west-1
+  owner: sre-guild
+networking:
+  proxy:
+    http: http://dev-proxy.local:8080
+    https: http://dev-proxy.local:8080
+    no_proxy: "localhost,127.0.0.1"
+  bastion: bastion.dev.example
+auth:
+  vault_role: dev/vm/operator
+  ssh_cert_role: dev-ops
+policies:
+  risk_level: medium
+  require_approval: false
+  change_ticket_required: false
+defaults:
+  working_directory: /srv/devops
+  retries: 1
+runbooks:
+  - docs/runbooks/vm/maintenance.md
+notes: Используйте при обслуживании дев-окружения; доступ разрешён по bastion.

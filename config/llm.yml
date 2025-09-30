@@ -16,11 +16,9 @@ providers:
     config:
       api_key: ${GEMINI_API_KEY}
       model: gemini-1.5-flash
-      safety_settings:
-        harassment: BLOCK_MEDIUM_AND_ABOVE
-        hate_speech: BLOCK_MEDIUM_AND_ABOVE
-        sexually_explicit: BLOCK_MEDIUM_AND_ABOVE
-        dangerous_content: BLOCK_MEDIUM_AND_ABOVE
+      temperature: 0.7
+      max_tokens: 4096
+      safety_settings: {}
   ollama:
     type: ollama
     priority: 5

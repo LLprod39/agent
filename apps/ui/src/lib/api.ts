@@ -3,9 +3,9 @@ import { ChatRequest, ChatResponse } from '@/types/chat'
 import { TaskRequest, TaskResponse, Task } from '@/types/task'
 import { EnvironmentListResponse, EnvironmentResponse } from '@/types/environment'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
@@ -151,7 +151,92 @@ export const healthApi = {
   },
 }
 
+// Admin API
+export const adminApi = {
+  // System Info
+  getSystemInfo: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/system/info')
+    return response.data
+  },
+
+  // LLM Configuration
+  getLLMConfig: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/llm/config')
+    return response.data
+  },
+
+  checkProvidersHealth: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/llm/providers/health')
+    return response.data
+  },
+
+  // Cache Management
+  getCacheStats: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/cache/stats')
+    return response.data
+  },
+
+  clearCache: async (): Promise<any> => {
+    const response = await api.post('/api/v1/admin/cache/clear')
+    return response.data
+  },
+
+  // Session Management
+  getSessionStats: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/sessions/stats')
+    return response.data
+  },
+
+  deleteSession: async (sessionId: string): Promise<any> => {
+    const response = await api.delete(`/api/v1/admin/sessions/${sessionId}`)
+    return response.data
+  },
+
+  // Redis
+  getRedisInfo: async (): Promise<any> => {
+    const response = await api.get('/api/v1/admin/redis/info')
+    return response.data
+  },
+
+  // Agent Testing
+  testAgent: async (request: {
+    task: string
+    environment_profile?: string
+    agent_type?: string
+    auto_approve?: boolean
+  }): Promise<any> => {
+    const response = await api.post('/api/v1/admin/test/agent', request)
+    return response.data
+  },
+
+  // Workflow Logs
+  getWorkflowLogs: async (taskId: string): Promise<any> => {
+    const response = await api.get(`/api/v1/admin/logs/workflow/${taskId}`)
+    return response.data
+  },
+
+  // Provider Configuration Management
+  updateProviderConfig: async (providerName: string, config: {
+    api_key?: string
+    model?: string
+    enabled?: boolean
+    temperature?: number
+    max_tokens?: number
+  }): Promise<any> => {
+    const response = await api.post(`/api/v1/admin/llm/providers/${providerName}/config`, config)
+    return response.data
+  },
+
+  testProviderWithConfig: async (providerName: string, model?: string): Promise<any> => {
+    const response = await api.post(`/api/v1/admin/llm/providers/${providerName}/test`, null, {
+      params: { model }
+    })
+    return response.data
+  },
+}
+
 export default api
+
 
 
 

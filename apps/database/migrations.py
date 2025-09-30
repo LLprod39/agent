@@ -209,7 +209,7 @@ class MigrationManager:
             CreateMigrationsTable(),
             AddUserIndexes(),
             AddTaskPerformanceIndexes(),
-            AddLLMUsagePartitioning(),
+            # AddLLMUsagePartitioning(),  # Temporarily disabled - partitioning issue
             AddAuditLogRetention(),
         ]
 
