@@ -2,12 +2,14 @@
 
 import logging
 import time
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 
 from ..models import HealthResponse, HealthCheck
-from ..dependencies import get_orchestrator
+from ..dependencies import get_orchestrator, get_redis_manager, get_db_manager
 from ...orchestrator import Orchestrator
+from ...cache import RedisManager
+from ...database.connection import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,10 @@ startup_time = time.time()
 
 
 @router.get("/", response_model=HealthResponse)
-async def health_check(orchestrator: Orchestrator = Depends(get_orchestrator)):
+async def health_check(
+    request: Request,
+    orchestrator: Orchestrator = Depends(get_orchestrator)
+):
     """Comprehensive health check."""
     try:
         components = []
@@ -70,35 +75,89 @@ async def health_check(orchestrator: Orchestrator = Depends(get_orchestrator)):
             )
             overall_status = "unhealthy"
 
-        # Check database connectivity (placeholder)
+        # Check database connectivity
         try:
-            # TODO: Implement actual database health check
-            components.append(
-                HealthCheck(
-                    component="database",
-                    status="healthy",
-                    message="Database connectivity OK",
+            db_manager: DatabaseManager = getattr(request.app.state, "db_manager", None)
+            if db_manager:
+                db_healthy = await db_manager.health_check()
+                components.append(
+                    HealthCheck(
+                        component="database",
+                        status="healthy" if db_healthy else "unhealthy",
+                        message="Database connectivity OK" if db_healthy else "Database unreachable",
+                    )
                 )
-            )
+                if not db_healthy:
+                    overall_status = "unhealthy"
+            else:
+                components.append(
+                    HealthCheck(
+                        component="database",
+                        status="unknown",
+                        message="Database manager not initialized",
+                    )
+                )
+                overall_status = "degraded"
+
         except Exception as e:
             components.append(
                 HealthCheck(component="database", status="unhealthy", message=str(e))
             )
             overall_status = "unhealthy"
 
-        # Check Redis connectivity (placeholder)
+        # Check Redis connectivity
         try:
-            # TODO: Implement actual Redis health check
-            components.append(
-                HealthCheck(
-                    component="redis", status="healthy", message="Redis connectivity OK"
+            redis_manager: RedisManager = getattr(request.app.state, "redis_manager", None)
+            if redis_manager:
+                redis_healthy = await redis_manager.health_check()
+                components.append(
+                    HealthCheck(
+                        component="redis",
+                        status="healthy" if redis_healthy else "unhealthy",
+                        message="Redis connectivity OK" if redis_healthy else "Redis unreachable"
+                    )
                 )
-            )
+                if not redis_healthy:
+                    overall_status = "degraded"  # Redis is not critical
+            else:
+                components.append(
+                    HealthCheck(
+                        component="redis",
+                        status="unknown",
+                        message="Redis manager not initialized"
+                    )
+                )
+                overall_status = "degraded"
+
         except Exception as e:
             components.append(
                 HealthCheck(component="redis", status="unhealthy", message=str(e))
             )
             overall_status = "degraded"  # Redis is not critical
+        
+        # Check LLM Cache stats
+        try:
+            if orchestrator.llm_router.cache_enabled:
+                cache_stats = await orchestrator.llm_router.get_cache_stats()
+                if cache_stats:
+                    components.append(
+                        HealthCheck(
+                            component="llm_cache",
+                            status="healthy",
+                            message=f"Cache hit rate: {cache_stats.get('hit_rate', 0):.2%}",
+                            details=cache_stats
+                        )
+                    )
+            else:
+                components.append(
+                    HealthCheck(
+                        component="llm_cache",
+                        status="disabled",
+                        message="LLM caching is disabled"
+                    )
+                )
+        except Exception as e:
+            logger.warning(f"Failed to get cache stats: {e}")
 
         # Calculate uptime
         uptime = time.time() - startup_time
@@ -168,25 +227,15 @@ async def liveness_check():
 async def metrics():
     """Prometheus metrics endpoint."""
     try:
-        # TODO: Implement actual metrics collection
-        # For now, return basic metrics
-        metrics_data = {
-            "devops_agent_uptime_seconds": time.time() - startup_time,
-            "devops_agent_active_tasks": 0,  # TODO: Get from orchestrator
-            "devops_agent_llm_requests_total": 0,  # TODO: Implement counter
-            "devops_agent_llm_requests_failed_total": 0,  # TODO: Implement counter
-        }
-
-        # Format as Prometheus metrics
-        lines = []
-        for key, value in metrics_data.items():
-            description = key.replace("_", " ").title()
-            lines.append(f"# HELP {key} {description}")
-            lines.append(f"# TYPE {key} gauge")
-            lines.append(f"{key} {value}")
-        metrics_text = "\n".join(lines) + "\n"
-
-        return PlainTextResponse(content=metrics_text, media_type="text/plain")
+        from ..middleware.prometheus import get_metrics
+        
+        # Get Prometheus metrics in text format
+        metrics_data = get_metrics()
+        
+        return PlainTextResponse(
+            content=metrics_data.decode('utf-8'),
+            media_type="text/plain; version=0.0.4"
+        )
 
     except Exception as e:
         logger.error(f"Metrics error: {str(e)}")

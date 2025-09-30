@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
@@ -10,6 +11,22 @@ from .base import LLMProvider, LLMProviderType, LLMRequest, LLMResponse
 
 
 logger = logging.getLogger(__name__)
+
+# Import metrics tracking (optional)
+try:
+    from ...api.middleware.prometheus import track_llm_request, track_llm_tokens, track_cache_hit, track_cache_miss
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+    logger.debug("Prometheus metrics not available in LLM Router")
+
+# LLMCache is imported dynamically to avoid circular dependencies
+LLMCache = None
+try:
+    from ...cache import LLMCache as _LLMCache
+    LLMCache = _LLMCache
+except ImportError:
+    logger.warning("LLMCache not available - caching will be disabled")
 
 
 @dataclass
@@ -26,11 +43,18 @@ class ProviderConfig:
 class LLMRouter:
     """Router for managing multiple LLM providers with fallback."""
 
-    def __init__(self, providers_config: Sequence[Any]):
+    def __init__(self, providers_config: Sequence[Any], llm_cache=None):
         self.providers: Dict[str, LLMProvider] = {}
         self.provider_configs: List[ProviderConfig] = []
+        self.llm_cache = llm_cache
+        self.cache_enabled = llm_cache is not None
         normalized = [self._normalize_provider_config(entry) for entry in providers_config]
         self._setup_providers(normalized)
+        
+        if self.cache_enabled:
+            logger.info("LLM caching enabled")
+        else:
+            logger.info("LLM caching disabled")
 
     def _normalize_provider_config(self, entry: Any) -> Dict[str, Any]:
         if hasattr(entry, "model_dump"):
@@ -118,9 +142,44 @@ class LLMRouter:
         )
 
     async def complete(
-        self, request: LLMRequest, preferred_provider: Optional[str] = None
+        self, request: LLMRequest, preferred_provider: Optional[str] = None, use_cache: bool = True
     ) -> LLMResponse:
         """Complete a request using the best available provider."""
+        start_time = time.time()
+        
+        # Check cache first if enabled
+        if self.cache_enabled and use_cache:
+            try:
+                cached_response = await self.llm_cache.get(
+                    prompt=request.prompt,
+                    model=request.model or "default",
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    system_message=request.system_message,
+                )
+                
+                if cached_response:
+                    logger.debug("Cache HIT for LLM request")
+                    
+                    # Track cache hit metric
+                    if METRICS_AVAILABLE:
+                        track_cache_hit("llm")
+                    
+                    # Reconstruct LLMResponse from cached data
+                    return LLMResponse(
+                        content=cached_response["content"],
+                        model=cached_response["model"],
+                        provider=LLMProviderType(cached_response["provider"]),
+                        usage=cached_response.get("usage", {}),
+                        metadata={"cached": True, **cached_response.get("metadata", {})}
+                    )
+                else:
+                    # Track cache miss
+                    if METRICS_AVAILABLE:
+                        track_cache_miss("llm")
+            except Exception as e:
+                logger.warning(f"Cache lookup failed: {e}")
+        
         providers = self._get_available_providers()
 
         if preferred_provider and preferred_provider in self.providers:
@@ -128,7 +187,9 @@ class LLMRouter:
             try:
                 provider = self.providers[preferred_provider]
                 if await provider.health_check():
-                    return await provider.complete(request)
+                    response = await provider.complete(request)
+                    await self._cache_response(request, response, use_cache)
+                    return response
             except Exception as e:
                 logger.warning(f"Preferred provider {preferred_provider} failed: {e}")
 
@@ -137,12 +198,74 @@ class LLMRouter:
             try:
                 provider = self.providers[provider_config.name]
                 if await provider.health_check():
-                    return await provider.complete(request)
+                    response = await provider.complete(request)
+                    await self._cache_response(request, response, use_cache)
+                    
+                    # Track metrics
+                    duration = time.time() - start_time
+                    if METRICS_AVAILABLE:
+                        track_llm_request(
+                            provider=provider_config.name,
+                            model=response.model,
+                            status="success",
+                            duration=duration
+                        )
+                        
+                        # Track token usage if available
+                        if response.usage:
+                            if "prompt_tokens" in response.usage:
+                                track_llm_tokens(
+                                    provider=provider_config.name,
+                                    model=response.model,
+                                    token_type="prompt",
+                                    count=response.usage["prompt_tokens"]
+                                )
+                            if "completion_tokens" in response.usage:
+                                track_llm_tokens(
+                                    provider=provider_config.name,
+                                    model=response.model,
+                                    token_type="completion",
+                                    count=response.usage["completion_tokens"]
+                                )
+                    
+                    return response
             except Exception as e:
                 logger.warning(f"Provider {provider_config.name} failed: {e}")
+                
+                # Track failed request
+                if METRICS_AVAILABLE:
+                    duration = time.time() - start_time
+                    track_llm_request(
+                        provider=provider_config.name,
+                        model=request.model or "unknown",
+                        status="failed",
+                        duration=duration
+                    )
                 continue
 
         raise RuntimeError("No healthy LLM providers available")
+    
+    async def _cache_response(self, request: LLMRequest, response: LLMResponse, use_cache: bool = True):
+        """Cache the response if caching is enabled."""
+        if self.cache_enabled and use_cache:
+            try:
+                await self.llm_cache.set(
+                    prompt=request.prompt,
+                    model=response.model,
+                    response={
+                        "content": response.content,
+                        "model": response.model,
+                        "provider": response.provider.value,
+                        "usage": response.usage,
+                        "metadata": response.metadata,
+                    },
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    system_message=request.system_message,
+                )
+                logger.debug("Cached LLM response")
+            except Exception as e:
+                logger.warning(f"Failed to cache response: {e}")
 
     async def stream_complete(
         self, request: LLMRequest, preferred_provider: Optional[str] = None
@@ -196,3 +319,25 @@ class LLMRouter:
                 logger.error(f"Failed to get models for {name}: {e}")
                 models[name] = []
         return models
+    
+    async def get_cache_stats(self) -> Optional[Dict[str, Any]]:
+        """Get cache statistics if caching is enabled."""
+        if not self.cache_enabled:
+            return None
+        
+        try:
+            return await self.llm_cache.get_stats()
+        except Exception as e:
+            logger.error(f"Failed to get cache stats: {e}")
+            return None
+    
+    async def clear_cache(self) -> int:
+        """Clear the LLM cache."""
+        if not self.cache_enabled:
+            return 0
+        
+        try:
+            return await self.llm_cache.clear_all()
+        except Exception as e:
+            logger.error(f"Failed to clear cache: {e}")
+            return 0
