@@ -1,9 +1,9 @@
 """Pydantic models for the API."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskStatus(str, Enum):
@@ -36,14 +36,11 @@ class MessageRole(str, Enum):
 class BaseResponse(BaseModel):
     """Base response model."""
 
+    model_config = ConfigDict(ser_json_timedelta='iso8601')
+
     success: bool = True
     message: str = "Success"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ErrorResponse(BaseResponse):
@@ -61,7 +58,7 @@ class Message(BaseModel):
 
     role: MessageRole
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -206,8 +203,8 @@ class Session(BaseModel):
     id: str
     user_id: Optional[str] = None
     environment_profile: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     messages: List[Message] = Field(default_factory=list)
     metadata: Optional[Dict[str, Any]] = None
 

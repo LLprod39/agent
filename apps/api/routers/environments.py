@@ -128,7 +128,7 @@ async def validate_environment(
                     "valid": True,
                     "errors": result.errors,
                     "warnings": result.warnings,
-                    "profile": _to_api_model(result.profile).dict() if result.profile else None
+                    "profile": _to_api_model(result.profile).model_dump() if result.profile else None
                 },
                 "message": "Validation completed successfully",
             }
@@ -164,7 +164,7 @@ async def create_environment(
     """Create a new environment profile."""
     try:
         # Convert request to dict
-        profile_data = request.dict()
+        profile_data = request.model_dump(exclude_none=True)
         
         result = await service.create_profile(profile_data)
 
@@ -231,7 +231,7 @@ async def update_environment(
         }
         
         # Update with request data
-        request_data = request.dict(exclude_unset=True)
+        request_data = request.model_dump(exclude_unset=True)
         profile_data.update(request_data)
         
         result = await service.update_profile(environment_id, profile_data)

@@ -110,7 +110,10 @@ class EnvironmentAPITests(unittest.TestCase):
 
         response = self.client.get("/api/v1/environments/broken")
         self.assertEqual(response.status_code, 422, response.text)
-        self.assertIn("invalid", response.json()["detail"])
+        response_data = response.json()
+        # Check that error message contains "invalid"
+        self.assertIn("error", response_data)
+        self.assertIn("invalid", response_data["error"].lower())
 
 
 if __name__ == "__main__":  # pragma: no cover

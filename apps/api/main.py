@@ -87,10 +87,10 @@ app.add_middleware(
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
     """Handle HTTP exceptions."""
+    error_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
-        content=ErrorResponse(error=exc.detail, status_code=exc.status_code).dict(),
-        default=str,  # Handle datetime serialization
+        content=ErrorResponse(error=error_msg, status_code=exc.status_code).model_dump(mode='json'),
     )
 
 
@@ -100,8 +100,7 @@ async def general_exception_handler(request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}")
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(error="Internal server error", status_code=500).dict(),
-        default=str,  # Handle datetime serialization
+        content=ErrorResponse(error="Internal server error", status_code=500).model_dump(mode='json'),
     )
 
 
