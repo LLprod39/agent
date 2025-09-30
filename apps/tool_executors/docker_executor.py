@@ -209,6 +209,15 @@ class DockerExecutor(BaseToolExecutor):
 
     async def inspect_image(self, image_id: str) -> Optional[Dict[str, Any]]:
         """Inspect an image."""
+        if self.use_python_sdk and self.client:
+            try:
+                image = self.client.images.get(image_id)
+                return image.attrs
+            except (NotFound, DockerException) as e:
+                logger.error(f"Failed to inspect image: {e}")
+                return None
+        
+        # Fallback to CLI
         try:
             result = await self.execute(f"inspect {image_id}")
             if result.status == ToolStatus.SUCCESS:
@@ -216,3 +225,181 @@ class DockerExecutor(BaseToolExecutor):
         except Exception:
             pass
         return None
+
+    async def run_container(
+        self,
+        image: str,
+        command: Optional[str] = None,
+        environment: Optional[Dict[str, str]] = None,
+        volumes: Optional[Dict[str, Dict[str, str]]] = None,
+        ports: Optional[Dict[str, int]] = None,
+        detach: bool = True,
+        name: Optional[str] = None,
+    ) -> ToolResult:
+        """Run a new container."""
+        start_time = time.time()
+        
+        if self.dry_run:
+            return self._create_result(
+                ToolStatus.SUCCESS,
+                f"[DRY RUN] Would run container from image {image}",
+                execution_time=0.0,
+                metadata={"dry_run": True},
+            )
+        
+        if self.use_python_sdk and self.client:
+            try:
+                container = self.client.containers.run(
+                    image,
+                    command=command,
+                    environment=environment or {},
+                    volumes=volumes or {},
+                    ports=ports or {},
+                    detach=detach,
+                    name=name,
+                )
+                
+                execution_time = time.time() - start_time
+                logger.info(f"Started container {container.id} from image {image}")
+                
+                return self._create_result(
+                    ToolStatus.SUCCESS,
+                    f"Container started: {container.id}",
+                    execution_time=execution_time,
+                    metadata={
+                        "container_id": container.id,
+                        "image": image,
+                        "name": name,
+                    },
+                )
+            except (APIError, DockerException) as e:
+                execution_time = time.time() - start_time
+                logger.error(f"Failed to run container: {e}")
+                return self._create_result(
+                    ToolStatus.FAILED,
+                    "",
+                    error=str(e),
+                    execution_time=execution_time,
+                )
+        
+        # Fallback to CLI - упрощенная версия
+        return await self.execute(f"run -d --name {name or ''} {image}")
+
+    async def stop_container(self, container_id: str, timeout: int = 10) -> ToolResult:
+        """Stop a running container."""
+        start_time = time.time()
+        
+        if self.dry_run:
+            return self._create_result(
+                ToolStatus.SUCCESS,
+                f"[DRY RUN] Would stop container {container_id}",
+                execution_time=0.0,
+                metadata={"dry_run": True},
+            )
+        
+        if self.use_python_sdk and self.client:
+            try:
+                container = self.client.containers.get(container_id)
+                container.stop(timeout=timeout)
+                
+                execution_time = time.time() - start_time
+                logger.info(f"Stopped container {container_id}")
+                
+                return self._create_result(
+                    ToolStatus.SUCCESS,
+                    f"Container {container_id} stopped",
+                    execution_time=execution_time,
+                )
+            except (NotFound, APIError, DockerException) as e:
+                execution_time = time.time() - start_time
+                logger.error(f"Failed to stop container: {e}")
+                return self._create_result(
+                    ToolStatus.FAILED, "", error=str(e), execution_time=execution_time
+                )
+        
+        # Fallback to CLI
+        return await self.execute(f"stop -t {timeout} {container_id}")
+
+    async def remove_container(
+        self, container_id: str, force: bool = False
+    ) -> ToolResult:
+        """Remove a container."""
+        start_time = time.time()
+        
+        if self.dry_run:
+            return self._create_result(
+                ToolStatus.SUCCESS,
+                f"[DRY RUN] Would remove container {container_id}",
+                execution_time=0.0,
+                metadata={"dry_run": True},
+            )
+        
+        if self.use_python_sdk and self.client:
+            try:
+                container = self.client.containers.get(container_id)
+                container.remove(force=force)
+                
+                execution_time = time.time() - start_time
+                logger.info(f"Removed container {container_id}")
+                
+                return self._create_result(
+                    ToolStatus.SUCCESS,
+                    f"Container {container_id} removed",
+                    execution_time=execution_time,
+                )
+            except (NotFound, APIError, DockerException) as e:
+                execution_time = time.time() - start_time
+                logger.error(f"Failed to remove container: {e}")
+                return self._create_result(
+                    ToolStatus.FAILED, "", error=str(e), execution_time=execution_time
+                )
+        
+        # Fallback to CLI
+        cmd = f"rm {'-f ' if force else ''}{container_id}"
+        return await self.execute(cmd)
+
+    async def pull_image(self, image: str, tag: str = "latest") -> ToolResult:
+        """Pull an image from registry."""
+        start_time = time.time()
+        full_image = f"{image}:{tag}"
+        
+        if self.dry_run:
+            return self._create_result(
+                ToolStatus.SUCCESS,
+                f"[DRY RUN] Would pull image {full_image}",
+                execution_time=0.0,
+                metadata={"dry_run": True},
+            )
+        
+        if self.use_python_sdk and self.client:
+            try:
+                auth_config = self.registry_auth if self.registry_auth else None
+                self.client.images.pull(image, tag=tag, auth_config=auth_config)
+                
+                execution_time = time.time() - start_time
+                logger.info(f"Pulled image {full_image}")
+                
+                return self._create_result(
+                    ToolStatus.SUCCESS,
+                    f"Image {full_image} pulled successfully",
+                    execution_time=execution_time,
+                    metadata={"image": full_image},
+                )
+            except (APIError, DockerException) as e:
+                execution_time = time.time() - start_time
+                logger.error(f"Failed to pull image: {e}")
+                return self._create_result(
+                    ToolStatus.FAILED, "", error=str(e), execution_time=execution_time
+                )
+        
+        # Fallback to CLI
+        return await self.execute(f"pull {full_image}")
+
+    def close(self):
+        """Close Docker client connection."""
+        if self.client:
+            try:
+                self.client.close()
+                logger.info("Docker client closed")
+            except Exception as e:
+                logger.warning(f"Error closing Docker client: {e}")
