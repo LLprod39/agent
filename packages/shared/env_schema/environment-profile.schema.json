@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devops-llm-agent.local/schemas/environment-profile.schema.json",
+  "title": "Environment Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "networking",
+    "auth",
+    "policies"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Unique identifier used by the agent (kebab-case)."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-friendly name shown in UIs."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional context about the environment scope."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "k8s",
+        "vm",
+        "docker",
+        "bare-metal",
+        "serverless"
+      ],
+      "description": "Primary runtime category."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Free-form metadata such as region or owner tags.",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "integer",
+          "boolean"
+        ]
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        }
+      },
+      "description": "Kubernetes-specific connection details."
+    },
+    "networking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "http": {
+              "type": "string",
+              "format": "uri"
+            },
+            "https": {
+              "type": "string",
+              "format": "uri"
+            },
+            "no_proxy": {
+              "type": "string"
+            }
+          }
+        },
+        "bastion": {
+          "type": "string",
+          "description": "SSH bastion hostname or address."
+        },
+        "allowed_endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional allowlist for outbound connectivity."
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vault_role": {
+          "type": "string"
+        },
+        "ssh_cert_role": {
+          "type": "string"
+        },
+        "service_account": {
+          "type": "string"
+        },
+        "token_ref": {
+          "type": "string",
+          "description": "Reference to an external token or secret."
+        }
+      },
+      "description": "Authentication sources used to access the environment."
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_level",
+        "require_approval"
+      ],
+      "properties": {
+        "risk_level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "require_approval": {
+          "type": "boolean"
+        },
+        "change_ticket_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "package_manager": {
+          "type": "string"
+        },
+        "working_directory": {
+          "type": "string"
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "runbooks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^docs/runbooks/.+\\.md$"
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Namespace for future, vendor-specific fields.",
+      "additionalProperties": true
+    }
+  }
+}

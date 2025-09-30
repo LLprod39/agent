@@ -1,0 +1,29 @@
+id: dev-k8s
+display_name: Development Kubernetes
+type: k8s
+metadata:
+  region: us-west-2
+  owner: platform-team
+cluster:
+  name: dev-cluster
+  context: dev-admin
+networking:
+  proxy:
+    http: http://dev-proxy.local:3128
+    https: http://dev-proxy.local:3128
+    no_proxy: ".svc,.cluster.local,127.0.0.1"
+  allowed_endpoints:
+    - artifact.dev.local
+    - logging.dev.local
+auth:
+  vault_role: dev/k8s/admin
+  service_account: dev-agent
+policies:
+  risk_level: low
+  require_approval: false
+defaults:
+  namespace: sandbox
+  package_manager: apk
+runbooks:
+  - docs/runbooks/kubernetes/rolling-update.md
+notes: Это профиль для разработческого кластера; допускаются эксперименты с rollout.

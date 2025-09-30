@@ -1,0 +1,49 @@
+# LLM Provider Configuration
+providers:
+  local:
+    type: local
+    priority: 100
+    enabled: true
+    config:
+      model: local-simulator
+      mode: deterministic
+      step_prefix: step
+      estimated_duration: 45
+  gemini:
+    type: gemini
+    priority: 10
+    enabled: false
+    config:
+      api_key: ${GEMINI_API_KEY}
+      model: gemini-1.5-flash
+      safety_settings:
+        harassment: BLOCK_MEDIUM_AND_ABOVE
+        hate_speech: BLOCK_MEDIUM_AND_ABOVE
+        sexually_explicit: BLOCK_MEDIUM_AND_ABOVE
+        dangerous_content: BLOCK_MEDIUM_AND_ABOVE
+  ollama:
+    type: ollama
+    priority: 5
+    enabled: false
+    config:
+      base_url: http://localhost:11434
+      model: llama3
+      timeout: 30.0
+
+# Fallback configuration (reserved for future use)
+fallback:
+  enabled: true
+  max_retries: 3
+  retry_delay: 1.0
+
+# Rate limiting (reserved for future use)
+rate_limiting:
+  enabled: true
+  requests_per_minute: 60
+  burst_size: 10
+
+# Caching (reserved for future use)
+caching:
+  enabled: true
+  ttl_seconds: 300
+  max_size: 1000

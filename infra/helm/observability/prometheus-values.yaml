@@ -1,0 +1,330 @@
+# Prometheus configuration for DevOps LLM Agent
+# This file contains the values for the Prometheus Helm chart
+
+# Global configuration
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Prometheus server configuration
+server:
+  # Resource limits
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 500m
+    limits:
+      memory: 4Gi
+      cpu: 1000m
+
+  # Storage configuration
+  persistentVolume:
+    enabled: true
+    size: 50Gi
+    storageClass: "fast-ssd"
+
+  # Retention policy
+  retention: "30d"
+  retentionSize: "10GB"
+
+  # Additional command line arguments
+  extraArgs:
+    - "--web.enable-lifecycle"
+    - "--web.enable-admin-api"
+    - "--storage.tsdb.retention.time=30d"
+    - "--storage.tsdb.retention.size=10GB"
+
+# Alerting configuration
+alertmanager:
+  enabled: true
+  config:
+    global:
+      smtp_smarthost: 'smtp.company.com:587'
+      smtp_from: 'alerts@company.com'
+      smtp_auth_username: 'alerts@company.com'
+      smtp_auth_password: 'password'
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+
+    receivers:
+      - name: 'default'
+        email_configs:
+          - to: 'devops-team@company.com'
+            subject: 'DevOps LLM Agent Alert'
+            body: |
+              Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+
+      - name: 'critical-alerts'
+        email_configs:
+          - to: 'oncall@company.com'
+            subject: 'CRITICAL: DevOps LLM Agent Alert'
+            body: |
+              CRITICAL ALERT: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+
+      - name: 'warning-alerts'
+        email_configs:
+          - to: 'devops-team@company.com'
+            subject: 'WARNING: DevOps LLM Agent Alert'
+            body: |
+              Warning Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+
+# Service discovery configuration
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: server
+
+# Additional scrape configurations
+additionalScrapeConfigs:
+  - job_name: 'devops-llm-agent'
+    static_configs:
+      - targets: ['devops-llm-agent-api:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: http
+
+  - job_name: 'devops-llm-agent-orchestrator'
+    static_configs:
+      - targets: ['devops-llm-agent-orchestrator:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: http
+
+  - job_name: 'devops-llm-agent-tool-executors'
+    static_configs:
+      - targets: ['devops-llm-agent-tool-executors:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: http
+
+# Recording rules for pre-computed metrics
+recordingRules:
+  enabled: true
+  rules:
+    - name: "devops-llm-agent.rules"
+      rules:
+        # LLM performance rules
+        - record: "devops_llm_agent:llm_request_rate"
+          expr: "rate(llm_requests_total[5m])"
+          labels:
+            component: "llm_router"
+
+        - record: "devops_llm_agent:llm_request_duration_p95"
+          expr: "histogram_quantile(0.95, rate(llm_request_duration_seconds_bucket[5m]))"
+          labels:
+            component: "llm_router"
+
+        - record: "devops_llm_agent:llm_request_duration_p99"
+          expr: "histogram_quantile(0.99, rate(llm_request_duration_seconds_bucket[5m]))"
+          labels:
+            component: "llm_router"
+
+        # Task performance rules
+        - record: "devops_llm_agent:task_completion_rate"
+          expr: "rate(tasks_total{status=\"completed\"}[5m]) / rate(tasks_total[5m])"
+          labels:
+            component: "orchestrator"
+
+        - record: "devops_llm_agent:task_duration_p95"
+          expr: "histogram_quantile(0.95, rate(task_duration_seconds_bucket[5m]))"
+          labels:
+            component: "orchestrator"
+
+        # Security rules
+        - record: "devops_llm_agent:security_violation_rate"
+          expr: "rate(security_violations_total[5m])"
+          labels:
+            component: "security_manager"
+
+        - record: "devops_llm_agent:approval_rate"
+          expr: "rate(approvals_total{status=\"approved\"}[5m]) / rate(approvals_total[5m])"
+          labels:
+            component: "security_manager"
+
+# Alerting rules
+alertingRules:
+  enabled: true
+  rules:
+    - name: "devops-llm-agent-alerts"
+      rules:
+        # LLM alerts
+        - alert: "LLMProviderDown"
+          expr: "up{job=~\"devops-llm-agent.*\"} == 0"
+          for: "1m"
+          labels:
+            severity: "critical"
+            component: "llm_router"
+          annotations:
+            summary: "LLM provider is down"
+            description: "LLM provider {{ $labels.instance }} has been down for more than 1 minute"
+
+        - alert: "LLMRequestLatencyHigh"
+          expr: "devops_llm_agent:llm_request_duration_p95 > 10"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "llm_router"
+          annotations:
+            summary: "High LLM request latency"
+            description: "95th percentile LLM request latency is {{ $value }}s, which is above the 10s threshold"
+
+        - alert: "LLMRequestFailureRateHigh"
+          expr: "rate(llm_requests_total{status=\"failed\"}[5m]) / rate(llm_requests_total[5m]) > 0.1"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "llm_router"
+          annotations:
+            summary: "High LLM request failure rate"
+            description: "LLM request failure rate is {{ $value | humanizePercentage }}, which is above the 10% threshold"
+
+        # Task alerts
+        - alert: "TaskCompletionRateLow"
+          expr: "devops_llm_agent:task_completion_rate < 0.8"
+          for: "10m"
+          labels:
+            severity: "warning"
+            component: "orchestrator"
+          annotations:
+            summary: "Low task completion rate"
+            description: "Task completion rate is {{ $value | humanizePercentage }}, which is below the 80% threshold"
+
+        - alert: "TaskDurationHigh"
+          expr: "devops_llm_agent:task_duration_p95 > 300"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "orchestrator"
+          annotations:
+            summary: "High task duration"
+            description: "95th percentile task duration is {{ $value }}s, which is above the 5 minute threshold"
+
+        - alert: "ActiveTasksHigh"
+          expr: "active_tasks > 100"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "orchestrator"
+          annotations:
+            summary: "High number of active tasks"
+            description: "Number of active tasks is {{ $value }}, which is above the 100 threshold"
+
+        # Security alerts
+        - alert: "SecurityViolationDetected"
+          expr: "increase(security_violations_total[5m]) > 0"
+          for: "0m"
+          labels:
+            severity: "critical"
+            component: "security_manager"
+          annotations:
+            summary: "Security violation detected"
+            description: "Security violation of type {{ $labels.violation_type }} detected in environment {{ $labels.environment }}"
+
+        - alert: "ApprovalRateLow"
+          expr: "devops_llm_agent:approval_rate < 0.9"
+          for: "10m"
+          labels:
+            severity: "warning"
+            component: "security_manager"
+          annotations:
+            summary: "Low approval rate"
+            description: "Approval rate is {{ $value | humanizePercentage }}, which is below the 90% threshold"
+
+        # System alerts
+        - alert: "HighMemoryUsage"
+          expr: "system_memory_usage_bytes / (1024^3) > 8"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "system"
+          annotations:
+            summary: "High memory usage"
+            description: "Memory usage is {{ $value }}GB, which is above the 8GB threshold"
+
+        - alert: "HighCPUUsage"
+          expr: "system_cpu_usage_percent > 80"
+          for: "5m"
+          labels:
+            severity: "warning"
+            component: "system"
+          annotations:
+            summary: "High CPU usage"
+            description: "CPU usage is {{ $value }}%, which is above the 80% threshold"
+
+# Grafana integration
+grafana:
+  enabled: true
+  adminPassword: "admin123"
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: "fast-ssd"
+  
+  # Grafana dashboards
+  dashboards:
+    default:
+      devops-llm-agent-overview:
+        gnetId: 1860
+        revision: 1
+        datasource: Prometheus
+      devops-llm-agent-llm-metrics:
+        gnetId: 1861
+        revision: 1
+        datasource: Prometheus
+      devops-llm-agent-task-metrics:
+        gnetId: 1862
+        revision: 1
+        datasource: Prometheus
+      devops-llm-agent-security-metrics:
+        gnetId: 1863
+        revision: 1
+        datasource: Prometheus
+
+# Node exporter for system metrics
+nodeExporter:
+  enabled: true
+  hostRootFsMount:
+    enabled: true
+  hostNetwork: true
+  hostPID: true
+
+# Kube-state-metrics for Kubernetes metrics
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 200m

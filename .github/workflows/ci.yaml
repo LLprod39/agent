@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "develop", "feature/**"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install make dependencies
+        run: python -m pip install --upgrade pip
+
+      - name: Bootstrap toolchains
+        run: make bootstrap
+
+      - name: Validate environment profiles
+        run: make validate-environments
+
+      - name: Run unit tests
+        run: make test

@@ -1,0 +1,139 @@
+# Security Configuration
+enabled: true
+strict_mode: false
+audit_logging: true
+
+# Command Policies
+command_policies:
+  blocked_commands:
+    - "rm -rf /"
+    - "rm -rf /*"
+    - "dd if=/dev/zero"
+    - "mkfs"
+    - "fdisk"
+    - "parted"
+    - "shutdown"
+    - "reboot"
+    - "halt"
+    - "poweroff"
+    - "init 0"
+    - "init 6"
+
+  approval_required_commands:
+    - "kubectl delete"
+    - "kubectl apply -f"
+    - "kubectl create"
+    - "kubectl patch"
+    - "kubectl replace"
+    - "docker rm -f"
+    - "docker rmi"
+    - "docker system prune"
+    - "terraform destroy"
+    - "terraform apply"
+
+  readonly_commands:
+    - "kubectl get"
+    - "kubectl describe"
+    - "kubectl logs"
+    - "kubectl top"
+    - "docker ps"
+    - "docker images"
+    - "docker logs"
+    - "docker inspect"
+    - "terraform plan"
+    - "terraform show"
+    - "terraform output"
+
+  environment_restrictions:
+    prod:
+      allowed_commands:
+        - "kubectl get"
+        - "kubectl describe"
+        - "kubectl logs"
+      blocked_commands:
+        - "kubectl delete"
+        - "kubectl apply"
+        - "terraform destroy"
+
+# Risk Assessment
+risk_assessment:
+  risk_factors:
+    command_danger: 0.3
+    environment_sensitivity: 0.25
+    user_permissions: 0.2
+    time_of_day: 0.1
+    resource_impact: 0.15
+
+  environment_sensitivity:
+    prod: 0.9
+    production: 0.9
+    staging: 0.6
+    stage: 0.6
+    dev: 0.3
+    development: 0.3
+    test: 0.2
+    testing: 0.2
+
+  user_permissions:
+    admin: 0.1
+    root: 0.1
+    operator: 0.3
+    developer: 0.5
+    viewer: 0.8
+    readonly: 0.9
+
+  high_risk_hours: [22, 23, 0, 1, 2, 3, 4, 5, 6]
+
+# Approval Policies
+approval_policies:
+  approval_requirements:
+    high:
+      required_approvers: 2
+      required_roles: ["admin", "senior_engineer"]
+      timeout_hours: 24
+      escalation_hours: 4
+
+    medium:
+      required_approvers: 1
+      required_roles: ["admin", "engineer", "senior_engineer"]
+      timeout_hours: 48
+      escalation_hours: 8
+
+    low:
+      required_approvers: 1
+      required_roles: ["admin", "engineer", "senior_engineer", "developer"]
+      timeout_hours: 72
+      escalation_hours: 12
+
+  environment_approval:
+    prod:
+      always_require_approval: true
+      required_approvers: 2
+      required_roles: ["admin", "senior_engineer"]
+      business_hours_only: true
+
+    staging:
+      always_require_approval: false
+      required_approvers: 1
+      required_roles: ["admin", "engineer", "senior_engineer"]
+      business_hours_only: false
+
+    dev:
+      always_require_approval: false
+      required_approvers: 1
+      required_roles: ["admin", "engineer", "senior_engineer", "developer"]
+      business_hours_only: false
+
+  business_hours:
+    start: 9
+    end: 17
+    timezone: "UTC"
+
+  emergency_override:
+    enabled: true
+    required_roles: ["admin", "senior_engineer"]
+    max_frequency_per_day: 3
+    cooldown_hours: 1
+
+
+

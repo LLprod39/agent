@@ -1,0 +1,314 @@
+# Alertmanager configuration for DevOps LLM Agent
+# This file contains the Alertmanager configuration for handling alerts
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.company.com:587'
+      smtp_from: 'alerts@company.com'
+      smtp_auth_username: 'alerts@company.com'
+      smtp_auth_password: 'password'
+      smtp_require_tls: true
+      
+      # Slack configuration (optional)
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+      
+      # PagerDuty configuration (optional)
+      pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+    # Template for alert messages
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+
+    # Route configuration
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+        # Critical alerts - immediate notification
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+          group_wait: 0s
+          repeat_interval: 30m
+          
+        # Warning alerts - less frequent
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+          group_wait: 30s
+          repeat_interval: 2h
+          
+        # Security alerts - immediate notification
+        - match:
+            component: security_manager
+          receiver: 'security-alerts'
+          group_wait: 0s
+          repeat_interval: 15m
+          
+        # LLM alerts - moderate frequency
+        - match:
+            component: llm_router
+          receiver: 'llm-alerts'
+          group_wait: 15s
+          repeat_interval: 1h
+          
+        # System alerts - moderate frequency
+        - match:
+            component: system
+          receiver: 'system-alerts'
+          group_wait: 30s
+          repeat_interval: 1h
+
+    # Receiver configurations
+    receivers:
+      # Default receiver
+      - name: 'default'
+        email_configs:
+          - to: 'devops-team@company.com'
+            subject: 'DevOps LLM Agent Alert'
+            body: |
+              Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+
+      # Critical alerts receiver
+      - name: 'critical-alerts'
+        email_configs:
+          - to: 'oncall@company.com'
+            subject: 'CRITICAL: DevOps LLM Agent Alert'
+            body: |
+              CRITICAL ALERT: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+              
+              This is a critical alert requiring immediate attention.
+              
+        # Slack notification for critical alerts
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#alerts-critical'
+            title: 'CRITICAL: DevOps LLM Agent Alert'
+            text: |
+              CRITICAL ALERT: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              {{ end }}
+              
+        # PagerDuty notification for critical alerts
+        pagerduty_configs:
+          - routing_key: 'YOUR_PAGERDUTY_ROUTING_KEY'
+            description: 'Critical alert in DevOps LLM Agent'
+            details:
+              alertname: '{{ .GroupLabels.alertname }}'
+              description: '{{ .CommonAnnotations.description }}'
+              severity: '{{ .CommonLabels.severity }}'
+              environment: '{{ .CommonLabels.environment }}'
+
+      # Warning alerts receiver
+      - name: 'warning-alerts'
+        email_configs:
+          - to: 'devops-team@company.com'
+            subject: 'WARNING: DevOps LLM Agent Alert'
+            body: |
+              Warning Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+              
+        # Slack notification for warning alerts
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#alerts-warning'
+            title: 'WARNING: DevOps LLM Agent Alert'
+            text: |
+              Warning Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              {{ end }}
+
+      # Security alerts receiver
+      - name: 'security-alerts'
+        email_configs:
+          - to: 'security-team@company.com'
+            subject: 'SECURITY: DevOps LLM Agent Alert'
+            body: |
+              SECURITY ALERT: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+              
+              This is a security-related alert requiring immediate attention.
+              
+        # Slack notification for security alerts
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#security-alerts'
+            title: 'SECURITY: DevOps LLM Agent Alert'
+            text: |
+              SECURITY ALERT: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              {{ end }}
+
+      # LLM alerts receiver
+      - name: 'llm-alerts'
+        email_configs:
+          - to: 'ml-team@company.com'
+            subject: 'LLM: DevOps LLM Agent Alert'
+            body: |
+              LLM Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+              
+        # Slack notification for LLM alerts
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#ml-alerts'
+            title: 'LLM: DevOps LLM Agent Alert'
+            text: |
+              LLM Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              {{ end }}
+
+      # System alerts receiver
+      - name: 'system-alerts'
+        email_configs:
+          - to: 'infrastructure-team@company.com'
+            subject: 'SYSTEM: DevOps LLM Agent Alert'
+            body: |
+              System Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              Time: {{ .StartsAt }}
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Environment: {{ .Labels.environment }}
+              Instance: {{ .Labels.instance }}
+              {{ end }}
+              
+        # Slack notification for system alerts
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#infrastructure-alerts'
+            title: 'SYSTEM: DevOps LLM Agent Alert'
+            text: |
+              System Alert: {{ .GroupLabels.alertname }}
+              Description: {{ .CommonAnnotations.description }}
+              Severity: {{ .CommonLabels.severity }}
+              Environment: {{ .CommonLabels.environment }}
+              
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              {{ end }}
+
+    # Inhibition rules
+    inhibit_rules:
+      # Inhibit warning alerts when critical alerts are firing
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'cluster', 'service']
+        
+      # Inhibit system alerts when LLM alerts are firing
+      - source_match:
+          component: 'llm_router'
+        target_match:
+          component: 'system'
+        equal: ['environment']
+
+    # Silence rules
+    silence_rules:
+      # Silence alerts during maintenance windows
+      - matchers:
+          - name: 'alertname'
+            value: '.*'
+        startsAt: '2024-01-01T00:00:00Z'
+        endsAt: '2024-01-01T02:00:00Z'
+        comment: 'Maintenance window'
+        
+      # Silence non-critical alerts during business hours
+      - matchers:
+          - name: 'severity'
+            value: 'warning'
+        startsAt: '2024-01-01T09:00:00Z'
+        endsAt: '2024-01-01T17:00:00Z'
+        comment: 'Business hours - warnings only'

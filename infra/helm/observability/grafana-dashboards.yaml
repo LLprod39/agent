@@ -1,0 +1,504 @@
+# Grafana dashboards for DevOps LLM Agent
+# This file contains dashboard configurations for monitoring the agent
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-llm-agent-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  devops-llm-agent-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "DevOps LLM Agent - Overview",
+        "tags": ["devops", "llm", "agent"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "System Health",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=~\"devops-llm-agent.*\"}",
+                "legendFormat": "{{instance}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "green", "value": 1}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Active Tasks",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(active_tasks)",
+                "legendFormat": "Active Tasks"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 50},
+                    {"color": "red", "value": 100}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Task Completion Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:task_completion_rate",
+                "legendFormat": "Completion Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percentunit",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 0.8},
+                    {"color": "green", "value": 0.95}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "LLM Request Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:llm_request_rate",
+                "legendFormat": "Requests/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 10},
+                    {"color": "red", "value": 50}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Task Duration (95th percentile)",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:task_duration_p95",
+                "legendFormat": "{{environment}} - {{user_role}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+  devops-llm-agent-llm-metrics.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "DevOps LLM Agent - LLM Metrics",
+        "tags": ["devops", "llm", "agent", "llm-metrics"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "LLM Request Rate by Provider",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(llm_requests_total[5m])",
+                "legendFormat": "{{provider}} - {{model}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "LLM Request Duration (95th percentile)",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:llm_request_duration_p95",
+                "legendFormat": "{{provider}} - {{model}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "LLM Request Status Distribution",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (status) (rate(llm_requests_total[5m]))",
+                "legendFormat": "{{status}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "LLM Token Usage",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(llm_tokens_total[5m])",
+                "legendFormat": "{{provider}} - {{model}} - {{type}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "LLM Request Duration Histogram",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "rate(llm_request_duration_seconds_bucket[5m])",
+                "legendFormat": "{{le}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "spectrum"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+  devops-llm-agent-task-metrics.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "DevOps LLM Agent - Task Metrics",
+        "tags": ["devops", "llm", "agent", "task-metrics"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Task Rate by Status",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(tasks_total[5m])",
+                "legendFormat": "{{status}} - {{environment}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Task Duration (95th percentile)",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:task_duration_p95",
+                "legendFormat": "{{environment}} - {{user_role}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Active Tasks by Environment",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "active_tasks",
+                "legendFormat": "{{environment}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Task Completion Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:task_completion_rate",
+                "legendFormat": "Completion Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percentunit",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Task Duration Histogram",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "rate(task_duration_seconds_bucket[5m])",
+                "legendFormat": "{{le}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "spectrum"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+  devops-llm-agent-security-metrics.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "DevOps LLM Agent - Security Metrics",
+        "tags": ["devops", "llm", "agent", "security-metrics"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Security Violations by Type",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(security_violations_total[5m])",
+                "legendFormat": "{{violation_type}} - {{severity}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Approval Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:approval_rate",
+                "legendFormat": "{{user_role}} - {{environment}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percentunit",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Security Violations by Environment",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (environment) (rate(security_violations_total[5m]))",
+                "legendFormat": "{{environment}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Approval Status Distribution",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (status) (rate(approvals_total[5m]))",
+                "legendFormat": "{{status}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Security Violation Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "devops_llm_agent:security_violation_rate",
+                "legendFormat": "{{violation_type}} - {{severity}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
