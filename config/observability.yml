@@ -1,0 +1,84 @@
+# Observability Configuration
+enabled: true
+
+# Metrics
+metrics:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  
+  collection_interval: 60
+  retention_hours: 24
+
+# Logging
+logging:
+  enabled: true
+  level: "INFO"
+  format: "json"
+  
+  structured:
+    enabled: true
+    include_context: true
+  
+  audit:
+    enabled: true
+    max_events: 10000
+    retention_days: 30
+
+# Tracing
+tracing:
+  enabled: true
+  service_name: "devops-llm-agent"
+  
+  opentelemetry:
+    enabled: false
+    endpoint: "http://localhost:4317"
+    protocol: "grpc"
+  
+  basic:
+    enabled: true
+    max_spans: 10000
+
+# Health Monitoring
+health_monitoring:
+  enabled: true
+  check_interval: 30
+  timeout: 10
+  max_history: 1000
+
+# System Monitoring
+system_monitoring:
+  enabled: true
+  collect_interval: 60
+  max_history: 1000
+  
+  metrics:
+    cpu: true
+    memory: true
+    disk: true
+    network: true
+    processes: true
+
+# Alerting
+alerting:
+  enabled: false
+  
+  thresholds:
+    cpu_usage_percent: 80
+    memory_usage_percent: 80
+    disk_usage_percent: 80
+    response_time_seconds: 5
+  
+  channels:
+    - type: "webhook"
+      url: "http://localhost:8080/alerts"
+      enabled: false
+    - type: "email"
+      smtp_server: "localhost"
+      smtp_port: 587
+      enabled: false
+
+
+

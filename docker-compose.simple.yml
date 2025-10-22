@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=devops_agent
+      - POSTGRES_USER=devops
+      - POSTGRES_PASSWORD=devops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - devops-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - devops-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  devops-network:
+    driver: bridge

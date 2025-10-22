@@ -1,0 +1,36 @@
+id: prod-k8s
+display_name: Production Kubernetes
+type: k8s
+description: Primary production cluster serving end-user traffic.
+metadata:
+  region: eu-central-1
+  owner: sre-team
+cluster:
+  name: prod-cluster
+  context: prod-admin
+  namespace: default
+networking:
+  proxy:
+    http: http://proxy.company.local:3128
+    https: http://proxy.company.local:3128
+    no_proxy: ".svc,.cluster.local,127.0.0.1"
+  bastion: bastion.prod.company
+  allowed_endpoints:
+    - registry.company.local
+    - metrics.company.local
+auth:
+  vault_role: prod/k8s/admin
+  ssh_cert_role: prod-admin-cert
+  service_account: prod-agent
+policies:
+  risk_level: high
+  require_approval: true
+  change_ticket_required: true
+defaults:
+  namespace: nginx-prod
+  package_manager: apt
+  working_directory: /srv/agent
+  retries: 2
+runbooks:
+  - docs/runbooks/nginx/deploy.md
+notes: Require approved change ticket before rollout. Use proxy settings above when fetching images.

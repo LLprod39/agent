@@ -1,0 +1,36 @@
+id: '34534'
+type: vm
+display_name: '34534'
+networking:
+  proxy: {}
+auth: {}
+policies:
+  risk_level: low
+  require_approval: false
+defaults:
+  working_directory: /tmp
+  retries: 0
+metadata:
+  category: ssh-machine
+  created_from: ui
+ssh:
+  host: 172.25.173.251
+  port: 22
+  username: admin
+  jump_host:
+    host: ''
+    port: 22
+    username: ''
+  max_connection_attempts: 3
+  password: admin
+extensions:
+  ssh:
+    host: 172.25.173.251
+    port: 22
+    username: admin
+    jump_host:
+      host: ''
+      port: 22
+      username: ''
+    max_connection_attempts: 3
+    password: admin

@@ -1,0 +1,11 @@
+id: qa
+type: k8s
+display_name: QA Cluster
+networking:
+  proxy:
+    http: http://qa-proxy:3128
+auth:
+  vault_role: qa/admin
+policies:
+  risk_level: low
+  require_approval: false

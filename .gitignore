@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.coverage
+.venv*/
+.venv/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+pip-wheel-metadata/
+
+# Logs & run artefacts
+*.log
+*.pid
+
+# Ruff cache
+.ruff_cache/
+
+# Environment files
+.env
+.env.*
+
+# Node/Next.js
+node_modules/
+apps/ui/node_modules/
+apps/ui/.next/
+.next/
+pnpm-lock.yaml
+yarn.lock
+
+# Build outputs
+coverage/
+dist/
+build/
+
+# IDE & tooling
+.vscode/
+.idea/
+.DS_Store

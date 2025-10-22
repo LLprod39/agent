@@ -1,0 +1,28 @@
+id: ntcn
+type: vm
+display_name: ntcn
+networking:
+  proxy: {}
+auth: {}
+policies:
+  risk_level: low
+  require_approval: false
+defaults:
+  working_directory: /tmp
+  retries: 0
+metadata:
+  category: ssh-machine
+  created_from: ui
+ssh:
+  host: 172.25.173.251
+  port: 22
+  username: lunix
+  max_connection_attempts: 3
+  password: LLprod393@
+extensions:
+  ssh:
+    host: 172.25.173.251
+    port: 22
+    username: lunix
+    max_connection_attempts: 3
+    password: LLprod393@
